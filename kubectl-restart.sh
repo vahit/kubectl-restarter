@@ -1,41 +1,62 @@
 #!/bin/bash
 
-NAMESPACE=${}
-DEP_NAME=${}
-EXCEPT=${}
+CURRENT_SCALE=""
+GOAL_SCALE=""
+NAMESPACE=""
+DEP_NAME=""
+DEP_LIST=""
+DOWN=""
+UP=""
+declare -a EXCEPT
 
-while getopts ":n:e:" opt; do
+while getopts ":n:o:e:d:u:r" opt; do
     case $opt in
         n) NAMESPACE=${OPTARG};;
         e) EXCEPT=${OPTARG};;
-        \?) echo "Invalid options: ${OPTARG}" >&2
-            exit 1;;
-        o) DEP_NAME=${OPTARG};;
+        o) DEPS_LIST=${OPTARG};;
+        d) DOWN="TRUE"
+           GOAL_SCALE="${OPTARG}";;
+        u) UP="TRUE"
+           GOAL_SCALE="${OPTARG}";;
+        r) DOWN="TRUE"
+           UP="TRUE"
+           GOAL_SCALE=0;;
         :) echo "Option -${OPTARG} requires an argument." >&2
            exit 1;;
+        \?) echo "Invalid options: ${OPTARG}" >&2
+            exit 1;;
     esac
 done
 
-
-function restart_pod(){
+function scale_down(){
     NAMESPACE=${1}
     DEP_NAME=${2}
-    CURRENT_SCALE=$(kubectl --namespace "${NAMESPACE}" get deployment "${DEP_NAME}" --output json | jq '.spec.replicas')
-    OUTPUT=$(kubectl --namespace "${NAMESPACE}" scale --current-replicas="${CURRENT_SCALE}" --replicas=0 deployment/"${DEP_NAME}")
+    CURRENT=${3}
+    GOAL=${4}
+    OUTPUT=$(kubectl --namespace "${NAMESPACE}" scale --current-replicas="${CURRENT}" --replicas="${GOAL}" deployment/"${DEP_NAME}")
     RETURN_CODE=${?}
     if [[ ${RETURN_CODE} -eq 0 ]]; then
-        sleep 2
-        OUTPUT=$(kubectl --namespace "${NAMESPACE}" scale --current-replicas=0 --replicas="${CURRENT_SCALE}" deployment/"${DEP_NAME}")
-        RETURN_CODE=${?}
-        if [[ ${RETURN_CODE} -ne 0 ]]; then
-            echo -e "\e[5mError\e[0m: ${DEP_NAME} --> ${OUTPUT}"
-            exit 1
-        else
-            echo "${DEP_NAME}: RESTARTED."
-        fi
+        echo "${DEP_NAME} scaled DOWN to ${GOAL}."
     else
-        echo -e "\e[5mError\e[0m: ${DEP_NAME} could not scale down, ${OUTPUT}"
+        echo -e "\e[5mError\e[0m: ${DEP_NAME} could not scale DOWN, ${OUTPUT}"
+        exit 1
     fi
+}
+
+function scale_up(){
+    NAMESPACE=${1}
+    DEP_NAME=${2}
+    CURRENT=${3}
+    GOAL=${4}
+    OUTPUT=$(kubectl --namespace "${NAMESPACE}" scale --current-replicas="${CURRENT}" --replicas="${GOAL}" deployment/"${DEP_NAME}")
+    RETURN_CODE=${?}
+    if [[ ${RETURN_CODE} -eq 0 ]]; then
+        echo "${DEP_NAME} scaled UP to ${GOAL}."
+    else
+        echo -e "\e[5mError\e[0m: ${DEP_NAME} could not scale UP, ${OUTPUT}"
+        exit 1
+    fi
+
 }
 
 if [[ -z ${NAMESPACE} ]]; then
@@ -43,15 +64,21 @@ if [[ -z ${NAMESPACE} ]]; then
     exit 1
 fi
 
-if [[ ! -z ${DEP_NAME} ]]; then
-    restart_pod ${NAMESPACE} ${DEP_NAME}
-    exit 0
+if [[ -z ${DEPS_LIST} ]]; then
+    DEPS_LIST=$(kubectl --namespace "${NAMESPACE}" get deployment | grep -v NAME | awk '{print $1}')
 fi
 
-DEPS_LIST=$(kubectl --namespace "${NAMESPACE}" get deployment | grep -v NAME | awk '{print $1}')
 for EACH_DEP in ${DEPS_LIST}; do
-    if [[ ${EXCEPT} != *"${EACH_DEP}"* ]]; then
-        restart_pod ${NAMESPACE} ${EACH_DEP}
+    if [[ "${EXCEPT[@]}" != *"${EACH_DEP}"* ]]; then
+        CURRENT_SCALE=$(kubectl --namespace "${NAMESPACE}" get deployment "${EACH_DEP}" --output json | jq '.spec.replicas')
+        if [[ ${DOWN} == "TRUE" ]]; then
+            scale_down "${NAMESPACE}" "${EACH_DEP}" "${CURRENT_SCALE}" "${GOAL_SCALE}"
+        fi
+        if [[ ${UP} == "TRUE" && ${DOWN} == "TRUE" ]]; then
+            scale_up "${NAMESPACE}" "${EACH_DEP}" "${GOAL_SCALE}" "${CURRENT_SCALE}"
+        elif [[ ${UP} == "TRUE" && ${DOWN} != "TRUE" ]]; then
+            scale_up "${NAMESPACE}" "${EACH_DEP}" "${CURRENT_SCALE}" "${GOAL_SCALE}"
+        fi
     fi
 done
 
