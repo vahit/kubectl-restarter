@@ -36,7 +36,11 @@ function scale_down(){
     OUTPUT=$(kubectl --namespace "${NAMESPACE}" scale --current-replicas="${CURRENT}" --replicas="${GOAL}" deployment/"${DEP_NAME}")
     RETURN_CODE=${?}
     if [[ ${RETURN_CODE} -eq 0 ]]; then
+<<<<<<< Updated upstream
         echo "${DEP_NAME} scaled DOWN to ${GOAL}."
+=======
+        echo "\"${DEPN}\" scaled to ${GOAL} successfuly."
+>>>>>>> Stashed changes
     else
         echo -e "\e[5mError\e[0m: ${DEP_NAME} could not scale DOWN, ${OUTPUT}"
         exit 1
