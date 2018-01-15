@@ -30,7 +30,7 @@ function scale(){
     OUTPUT=$(kubectl --namespace "${NAMES}" scale --current-replicas="${CURRENT}" --replicas="${GOAL}" deployment/"${DEPN}")
     RETURN_CODE=${?}
     if [[ ${RETURN_CODE} -eq 0 ]]; then
-        echo "${DEPN} scaled successfuly to ${GOAL} ."
+        echo "\"${DEPN}\" scaled to ${GOAL} successfuly."
     else
         echo -e "\e[5mError\e[0m: ${DEP_NAME} could not scale DOWN, ${OUTPUT}"
         exit 1
